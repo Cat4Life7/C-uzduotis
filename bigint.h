@@ -1,11 +1,17 @@
 #ifndef BIGINT_H
 #define BIGINT_H
 
-#define MAX_DIGITS 1000
+#include <stdlib.h>
+
+/* Each node stores one digit (in reverse order, least significant first) */
+typedef struct Node {
+    int digit;
+    struct Node *next;
+} Node;
 
 typedef struct {
-    int digits[MAX_DIGITS];   // skaitmenys (atvirkštine tvarka)
-    int length;               // kiek skaitmenų
+    Node *head;   // least significant digit first
+    int length;
 } BigInt;
 
 /* Pagrindinės funkcijos */
@@ -19,5 +25,11 @@ BigInt addBigInt(const BigInt *a, const BigInt *b);
 BigInt subtractBigInt(const BigInt *a, const BigInt *b);   // kai a >= b
 BigInt multiplyBigInt(const BigInt *a, const BigInt *b);
 BigInt divideBigInt(const BigInt *a, const BigInt *b);     // tik dalmuo
+
+/* Memory management */
+void freeBigInt(BigInt *a);
+Node *newNode(int digit);
+void appendDigit(BigInt *a, int digit);   // appends to least-significant end
+void copyBigInt(BigInt *dest, const BigInt *src);
 
 #endif

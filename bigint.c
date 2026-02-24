@@ -1,55 +1,124 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "bigint.h"
 
-void initBigInt(BigInt *a) {
-    a->length = 1;
-    a->digits[0] = 0;
+/* ===================== MEMORY HELPERS ===================== */
+
+Node *newNode(int digit) {
+    Node *n = (Node *)malloc(sizeof(Node));
+    n->digit = digit;
+    n->next = NULL;
+    return n;
 }
 
-void fromString(BigInt *a, const char *str) {
-    int len = strlen(str);
-    a->length = len;
+void freeBigInt(BigInt *a) {
+    Node *cur = a->head;
+    while (cur) {
+        Node *tmp = cur;
+        cur = cur->next;
+        free(tmp);
+    }
+    a->head = NULL;
+    a->length = 0;
+}
 
-    for (int i = 0; i < len; i++) {
-        a->digits[i] = str[len - 1 - i] - '0';
+/* Append a digit to the MOST significant end (used during construction) */
+void appendDigit(BigInt *a, int digit) {
+    Node *n = newNode(digit);
+    if (!a->head) {
+        a->head = n;
+    } else {
+        Node *cur = a->head;
+        while (cur->next) cur = cur->next;
+        cur->next = n;
+    }
+    a->length++;
+}
+
+void copyBigInt(BigInt *dest, const BigInt *src) {
+    dest->head = NULL;
+    dest->length = 0;
+    Node *cur = src->head;
+    while (cur) {
+        appendDigit(dest, cur->digit);
+        cur = cur->next;
+    }
+}
+
+/* ===================== PAGRINDINĖS ===================== */
+
+void initBigInt(BigInt *a) {
+    a->head = newNode(0);
+    a->length = 1;
+}
+
+/* str is a normal human-readable number string e.g. "12345"
+   We store digits in reverse (least significant first) */
+void fromString(BigInt *a, const char *str) {
+    a->head = NULL;
+    a->length = 0;
+    int len = strlen(str);
+    for (int i = len - 1; i >= 0; i--) {
+        appendDigit(a, str[i] - '0');
     }
 }
 
 void printBigInt(const BigInt *a) {
+    /* Collect into array for reverse printing */
+    int *arr = (int *)malloc(a->length * sizeof(int));
+    Node *cur = a->head;
+    for (int i = 0; i < a->length; i++) {
+        arr[i] = cur->digit;
+        cur = cur->next;
+    }
     for (int i = a->length - 1; i >= 0; i--) {
-        printf("%d", a->digits[i]);
+        printf("%d", arr[i]);
     }
     printf("\n");
+    free(arr);
 }
 
 int compareBigInt(const BigInt *a, const BigInt *b) {
     if (a->length > b->length) return 1;
     if (a->length < b->length) return -1;
 
-    for (int i = a->length - 1; i >= 0; i--) {
-        if (a->digits[i] > b->digits[i]) return 1;
-        if (a->digits[i] < b->digits[i]) return -1;
+    /* Same length: compare from most significant digit */
+    int *da = (int *)malloc(a->length * sizeof(int));
+    int *db = (int *)malloc(b->length * sizeof(int));
+
+    Node *ca = a->head, *cb = b->head;
+    for (int i = 0; i < a->length; i++) {
+        da[i] = ca->digit; ca = ca->next;
+        db[i] = cb->digit; cb = cb->next;
     }
-    return 0;
+
+    int result = 0;
+    for (int i = a->length - 1; i >= 0; i--) {
+        if (da[i] > db[i]) { result = 1; break; }
+        if (da[i] < db[i]) { result = -1; break; }
+    }
+
+    free(da);
+    free(db);
+    return result;
 }
 
 /* ===================== SUDĖTIS ===================== */
 
 BigInt addBigInt(const BigInt *a, const BigInt *b) {
     BigInt result;
+    result.head = NULL;
     result.length = 0;
 
     int carry = 0;
-    int maxLen = (a->length > b->length) ? a->length : b->length;
+    Node *ca = a->head, *cb = b->head;
 
-    for (int i = 0; i < maxLen || carry; i++) {
+    while (ca || cb || carry) {
         int sum = carry;
-
-        if (i < a->length) sum += a->digits[i];
-        if (i < b->length) sum += b->digits[i];
-
-        result.digits[result.length++] = sum % 10;
+        if (ca) { sum += ca->digit; ca = ca->next; }
+        if (cb) { sum += cb->digit; cb = cb->next; }
+        appendDigit(&result, sum % 10);
         carry = sum / 10;
     }
 
@@ -60,15 +129,15 @@ BigInt addBigInt(const BigInt *a, const BigInt *b) {
 
 BigInt subtractBigInt(const BigInt *a, const BigInt *b) {
     BigInt result;
-    result.length = a->length;
+    result.head = NULL;
+    result.length = 0;
 
     int borrow = 0;
+    Node *ca = a->head, *cb = b->head;
 
-    for (int i = 0; i < a->length; i++) {
-        int diff = a->digits[i] - borrow;
-
-        if (i < b->length)
-            diff -= b->digits[i];
+    while (ca) {
+        int diff = ca->digit - borrow;
+        if (cb) { diff -= cb->digit; cb = cb->next; }
 
         if (diff < 0) {
             diff += 10;
@@ -77,12 +146,21 @@ BigInt subtractBigInt(const BigInt *a, const BigInt *b) {
             borrow = 0;
         }
 
-        result.digits[i] = diff;
+        appendDigit(&result, diff);
+        ca = ca->next;
     }
 
-    while (result.length > 1 &&
-           result.digits[result.length - 1] == 0)
-        result.length--;
+    /* Remove leading zeros (trailing in our list) */
+    while (result.length > 1) {
+        /* Find second-to-last node */
+        Node *cur = result.head;
+        while (cur->next && cur->next->next) cur = cur->next;
+        if (cur->next && cur->next->digit == 0) {
+            free(cur->next);
+            cur->next = NULL;
+            result.length--;
+        } else break;
+    }
 
     return result;
 }
@@ -90,29 +168,55 @@ BigInt subtractBigInt(const BigInt *a, const BigInt *b) {
 /* ===================== DAUGYBA ===================== */
 
 BigInt multiplyBigInt(const BigInt *a, const BigInt *b) {
-    BigInt result;
-    result.length = a->length + b->length;
+    int lenA = a->length, lenB = b->length;
+    int lenR = lenA + lenB;
 
-    for (int i = 0; i < result.length; i++)
-        result.digits[i] = 0;
+    /* Use a temporary array for intermediate results */
+    int *temp = (int *)calloc(lenR, sizeof(int));
 
-    for (int i = 0; i < a->length; i++) {
+    /* Flatten both lists into arrays */
+    int *da = (int *)malloc(lenA * sizeof(int));
+    int *db = (int *)malloc(lenB * sizeof(int));
+
+    Node *ca = a->head;
+    for (int i = 0; i < lenA; i++) { da[i] = ca->digit; ca = ca->next; }
+
+    Node *cb = b->head;
+    for (int i = 0; i < lenB; i++) { db[i] = cb->digit; cb = cb->next; }
+
+    for (int i = 0; i < lenA; i++) {
         int carry = 0;
-
-        for (int j = 0; j < b->length; j++) {
-            int temp = result.digits[i + j] +
-                       a->digits[i] * b->digits[j] + carry;
-
-            result.digits[i + j] = temp % 10;
-            carry = temp / 10;
+        for (int j = 0; j < lenB; j++) {
+            int t = temp[i + j] + da[i] * db[j] + carry;
+            temp[i + j] = t % 10;
+            carry = t / 10;
         }
-
-        result.digits[i + b->length] += carry;
+        temp[i + lenB] += carry;
     }
 
-    while (result.length > 1 &&
-           result.digits[result.length - 1] == 0)
-        result.length--;
+    free(da);
+    free(db);
+
+    /* Build result from temp array */
+    BigInt result;
+    result.head = NULL;
+    result.length = 0;
+
+    for (int i = 0; i < lenR; i++)
+        appendDigit(&result, temp[i]);
+
+    free(temp);
+
+    /* Trim leading zeros */
+    while (result.length > 1) {
+        Node *cur = result.head;
+        while (cur->next && cur->next->next) cur = cur->next;
+        if (cur->next && cur->next->digit == 0) {
+            free(cur->next);
+            cur->next = NULL;
+            result.length--;
+        } else break;
+    }
 
     return result;
 }
@@ -125,43 +229,71 @@ BigInt divideBigInt(const BigInt *a, const BigInt *b) {
 
     if (compareBigInt(b, &zero) == 0) {
         printf("Klaida: dalyba is nulio!\n");
+        freeBigInt(&zero);
         return zero;
     }
 
-    BigInt quotient;
-    BigInt remainder;
+    /* Flatten a into array for digit-by-digit long division */
+    int lenA = a->length;
+    int *da = (int *)malloc(lenA * sizeof(int));
+    Node *ca = a->head;
+    for (int i = 0; i < lenA; i++) { da[i] = ca->digit; ca = ca->next; }
 
-    initBigInt(&quotient);
+    int *qdigits = (int *)calloc(lenA, sizeof(int));
+
+    BigInt remainder;
     initBigInt(&remainder);
 
-    quotient.length = a->length;
+    for (int i = lenA - 1; i >= 0; i--) {
+        /* remainder = remainder * 10 + da[i] */
+        BigInt ten;
+        fromString(&ten, "10");
+        BigInt newRem = multiplyBigInt(&remainder, &ten);
+        freeBigInt(&ten);
+        freeBigInt(&remainder);
 
-    for (int i = a->length - 1; i >= 0; i--) {
+        BigInt digit;
+        initBigInt(&digit);
+        digit.head->digit = da[i];
 
-        /* remainder = remainder * 10 */
-        for (int j = remainder.length; j > 0; j--)
-            remainder.digits[j] = remainder.digits[j - 1];
-
-        remainder.digits[0] = a->digits[i];
-        remainder.length++;
-
-        while (remainder.length > 1 &&
-               remainder.digits[remainder.length - 1] == 0)
-            remainder.length--;
+        remainder = addBigInt(&newRem, &digit);
+        freeBigInt(&newRem);
+        freeBigInt(&digit);
 
         int count = 0;
-
         while (compareBigInt(&remainder, b) >= 0) {
-            remainder = subtractBigInt(&remainder, b);
+            BigInt newR = subtractBigInt(&remainder, b);
+            freeBigInt(&remainder);
+            remainder = newR;
             count++;
         }
 
-        quotient.digits[i] = count;
+        qdigits[i] = count;
     }
 
-    while (quotient.length > 1 &&
-           quotient.digits[quotient.length - 1] == 0)
-        quotient.length--;
+    freeBigInt(&remainder);
+    free(da);
 
+    /* Build quotient BigInt from qdigits (stored least significant first) */
+    BigInt quotient;
+    quotient.head = NULL;
+    quotient.length = 0;
+    for (int i = 0; i < lenA; i++)
+        appendDigit(&quotient, qdigits[i]);
+
+    free(qdigits);
+
+    /* Trim leading zeros */
+    while (quotient.length > 1) {
+        Node *cur = quotient.head;
+        while (cur->next && cur->next->next) cur = cur->next;
+        if (cur->next && cur->next->digit == 0) {
+            free(cur->next);
+            cur->next = NULL;
+            quotient.length--;
+        } else break;
+    }
+
+    freeBigInt(&zero);
     return quotient;
 }
