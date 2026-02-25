@@ -1,299 +1,239 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include "bigint.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
-/* ===================== MEMORY HELPERS ===================== */
-
-Node *newNode(int digit) {
-    Node *n = (Node *)malloc(sizeof(Node));
-    n->digit = digit;
-    n->next = NULL;
+/* Sukuria tuščią BigInt su 'length' skaitmenų (visi nulis) */
+static BigInt *bigint_alloc(int length) {
+    BigInt *n  = malloc(sizeof(BigInt));
+    n->digits  = calloc(length, 1);
+    n->length  = length;
+    n->sign    = 1;
     return n;
 }
 
-void freeBigInt(BigInt *a) {
-    Node *cur = a->head;
-    while (cur) {
-        Node *tmp = cur;
-        cur = cur->next;
-        free(tmp);
-    }
-    a->head = NULL;
-    a->length = 0;
+/* Pašalina vedinius nulius */
+static void bigint_trim(BigInt *a) {
+    while (a->length > 1 && a->digits[a->length - 1] == 0)
+        a->length--;
+    if (a->length == 1 && a->digits[0] == 0)
+        a->sign = 1;
 }
 
-/* Append a digit to the MOST significant end (used during construction) */
-void appendDigit(BigInt *a, int digit) {
-    Node *n = newNode(digit);
-    if (!a->head) {
-        a->head = n;
-    } else {
-        Node *cur = a->head;
-        while (cur->next) cur = cur->next;
-        cur->next = n;
-    }
-    a->length++;
+/* Lygina absoliučias reikšmes: grąžina -1, 0, arba 1 */
+static int cmp_abs(const BigInt *a, const BigInt *b) {
+    if (a->length != b->length)
+        return a->length > b->length ? 1 : -1;
+    for (int i = a->length - 1; i >= 0; i--)
+        if (a->digits[i] != b->digits[i])
+            return a->digits[i] > b->digits[i] ? 1 : -1;
+    return 0;
 }
 
-void copyBigInt(BigInt *dest, const BigInt *src) {
-    dest->head = NULL;
-    dest->length = 0;
-    Node *cur = src->head;
-    while (cur) {
-        appendDigit(dest, cur->digit);
-        cur = cur->next;
-    }
-}
-
-/* ===================== PAGRINDINĖS ===================== */
-
-void initBigInt(BigInt *a) {
-    a->head = newNode(0);
-    a->length = 1;
-}
-
-/* str is a normal human-readable number string e.g. "12345"
-   We store digits in reverse (least significant first) */
-void fromString(BigInt *a, const char *str) {
-    a->head = NULL;
-    a->length = 0;
-    int len = strlen(str);
-    for (int i = len - 1; i >= 0; i--) {
-        appendDigit(a, str[i] - '0');
-    }
-}
-
-void printBigInt(const BigInt *a) {
-    /* Collect into array for reverse printing */
-    int *arr = (int *)malloc(a->length * sizeof(int));
-    Node *cur = a->head;
-    for (int i = 0; i < a->length; i++) {
-        arr[i] = cur->digit;
-        cur = cur->next;
-    }
-    for (int i = a->length - 1; i >= 0; i--) {
-        printf("%d", arr[i]);
-    }
-    printf("\n");
-    free(arr);
-}
-
-int compareBigInt(const BigInt *a, const BigInt *b) {
-    if (a->length > b->length) return 1;
-    if (a->length < b->length) return -1;
-
-    /* Same length: compare from most significant digit */
-    int *da = (int *)malloc(a->length * sizeof(int));
-    int *db = (int *)malloc(b->length * sizeof(int));
-
-    Node *ca = a->head, *cb = b->head;
-    for (int i = 0; i < a->length; i++) {
-        da[i] = ca->digit; ca = ca->next;
-        db[i] = cb->digit; cb = cb->next;
-    }
-
-    int result = 0;
-    for (int i = a->length - 1; i >= 0; i--) {
-        if (da[i] > db[i]) { result = 1; break; }
-        if (da[i] < db[i]) { result = -1; break; }
-    }
-
-    free(da);
-    free(db);
-    return result;
-}
-
-/* ===================== SUDĖTIS ===================== */
-
-BigInt addBigInt(const BigInt *a, const BigInt *b) {
-    BigInt result;
-    result.head = NULL;
-    result.length = 0;
-
+/* Sudeda absoliučias reikšmes */
+static BigInt *add_abs(const BigInt *a, const BigInt *b) {
+    int len = (a->length > b->length ? a->length : b->length) + 1;
+    BigInt *result = bigint_alloc(len);
     int carry = 0;
-    Node *ca = a->head, *cb = b->head;
-
-    while (ca || cb || carry) {
-        int sum = carry;
-        if (ca) { sum += ca->digit; ca = ca->next; }
-        if (cb) { sum += cb->digit; cb = cb->next; }
-        appendDigit(&result, sum % 10);
-        carry = sum / 10;
+    for (int i = 0; i < len; i++) {
+        int sum = (i < a->length ? a->digits[i] : 0)
+                + (i < b->length ? b->digits[i] : 0)
+                + carry;
+        result->digits[i] = sum % RADIX;
+        carry = sum / RADIX;
     }
-
+    bigint_trim(result);
     return result;
 }
 
-/* ===================== ATIMTIS ===================== */
-
-BigInt subtractBigInt(const BigInt *a, const BigInt *b) {
-    BigInt result;
-    result.head = NULL;
-    result.length = 0;
-
+/* Atima absoliučias reikšmes, reikalauja |a| >= |b| */
+static BigInt *sub_abs(const BigInt *a, const BigInt *b) {
+    BigInt *result = bigint_alloc(a->length);
     int borrow = 0;
-    Node *ca = a->head, *cb = b->head;
-
-    while (ca) {
-        int diff = ca->digit - borrow;
-        if (cb) { diff -= cb->digit; cb = cb->next; }
-
-        if (diff < 0) {
-            diff += 10;
-            borrow = 1;
-        } else {
-            borrow = 0;
-        }
-
-        appendDigit(&result, diff);
-        ca = ca->next;
+    for (int i = 0; i < a->length; i++) {
+        int diff = a->digits[i]
+                 - (i < b->length ? b->digits[i] : 0)
+                 - borrow;
+        if (diff < 0) { diff += RADIX; borrow = 1; }
+        else borrow = 0;
+        result->digits[i] = diff;
     }
-
-    /* Remove leading zeros (trailing in our list) */
-    while (result.length > 1) {
-        /* Find second-to-last node */
-        Node *cur = result.head;
-        while (cur->next && cur->next->next) cur = cur->next;
-        if (cur->next && cur->next->digit == 0) {
-            free(cur->next);
-            cur->next = NULL;
-            result.length--;
-        } else break;
-    }
-
+    bigint_trim(result);
     return result;
 }
 
-/* ===================== DAUGYBA ===================== */
+/* ---- Viešos funkcijos ---- */
 
-BigInt multiplyBigInt(const BigInt *a, const BigInt *b) {
-    int lenA = a->length, lenB = b->length;
-    int lenR = lenA + lenB;
+BigInt *bigint_from_int(long long value) {
+    BigInt *n = bigint_alloc(10);
+    n->sign = value < 0 ? -1 : 1;
+    unsigned long long u = value < 0 ? (unsigned long long)(-value)
+                                     : (unsigned long long)value;
+    n->length = 0;
+    if (u == 0) { n->length = 1; return n; }
+    while (u > 0) {
+        n->digits[n->length++] = u % RADIX;
+        u /= RADIX;
+    }
+    return n;
+}
 
-    /* Use a temporary array for intermediate results */
-    int *temp = (int *)calloc(lenR, sizeof(int));
+BigInt *bigint_from_str(const char *str) {
+    if (!str || !*str) return bigint_from_int(0);
+    int sign = 1;
+    if (*str == '-') { sign = -1; str++; }
+    else if (*str == '+') str++;
+    while (*str == '0' && str[1]) str++; /* veda nulius */
 
-    /* Flatten both lists into arrays */
-    int *da = (int *)malloc(lenA * sizeof(int));
-    int *db = (int *)malloc(lenB * sizeof(int));
+    BigInt *result = bigint_from_int(0);
+    BigInt *ten    = bigint_from_int(10);
+    for (; *str; str++) {
+        if (!isdigit((unsigned char)*str)) break;
+        BigInt *tmp = NULL;
+        bigint_mul(result, ten, &tmp);  bigint_free(result);
+        BigInt *digit = bigint_from_int(*str - '0');
+        bigint_add(tmp, digit, &result);
+        bigint_free(tmp); bigint_free(digit);
+    }
+    bigint_free(ten);
+    result->sign = sign;
+    bigint_trim(result);
+    return result;
+}
 
-    Node *ca = a->head;
-    for (int i = 0; i < lenA; i++) { da[i] = ca->digit; ca = ca->next; }
+BigInt *bigint_copy(const BigInt *a) {
+    BigInt *n = bigint_alloc(a->length);
+    memcpy(n->digits, a->digits, a->length);
+    n->sign = a->sign;
+    return n;
+}
 
-    Node *cb = b->head;
-    for (int i = 0; i < lenB; i++) { db[i] = cb->digit; cb = cb->next; }
+void bigint_free(BigInt *a) {
+    if (!a) return;
+    free(a->digits);
+    free(a);
+}
 
-    for (int i = 0; i < lenA; i++) {
+void bigint_print(const BigInt *a) {
+    BigInt *tmp  = bigint_copy(a); tmp->sign = 1;
+    BigInt *ten  = bigint_from_int(10);
+    BigInt *zero = bigint_from_int(0);
+    char buf[4096]; int pos = 0;
+    while (bigint_cmp(tmp, zero) != 0) {
+        BigInt *rem = NULL, *q = NULL;
+        bigint_div(tmp, ten, &q, &rem);
+        buf[pos++] = '0' + rem->digits[0];
+        bigint_free(rem); bigint_free(tmp); tmp = q;
+    }
+    bigint_free(tmp); bigint_free(ten); bigint_free(zero);
+    if (pos == 0) buf[pos++] = '0';
+    if (a->sign == -1) buf[pos++] = '-';
+    buf[pos] = '\0';
+    for (int i = 0, j = pos - 1; i < j; i++, j--) {
+        char c = buf[i]; buf[i] = buf[j]; buf[j] = c;
+    }
+    printf("%s", buf);
+}
+
+int bigint_cmp(const BigInt *a, const BigInt *b) {
+    if (a->sign != b->sign) return a->sign > b->sign ? 1 : -1;
+    int c = cmp_abs(a, b);
+    return a->sign == 1 ? c : -c;
+}
+
+int bigint_add(const BigInt *a, const BigInt *b, BigInt **out) {
+    if (!a || !b || !out) return BIGINT_ERR_NULL;
+    BigInt *result;
+    if (a->sign == b->sign) {
+        result = add_abs(a, b);
+        result->sign = a->sign;
+    } else {
+        int c = cmp_abs(a, b);
+        if (c == 0) { *out = bigint_from_int(0); return BIGINT_OK; }
+        result = c > 0 ? sub_abs(a, b) : sub_abs(b, a);
+        result->sign = c > 0 ? a->sign : b->sign;
+    }
+    bigint_trim(result);
+    *out = result;
+    return BIGINT_OK;
+}
+
+int bigint_sub(const BigInt *a, const BigInt *b, BigInt **out) {
+    if (!a || !b || !out) return BIGINT_ERR_NULL;
+    BigInt *neg_b = bigint_copy(b);
+    neg_b->sign = (b->length == 1 && b->digits[0] == 0) ? 1 : -b->sign;
+    int err = bigint_add(a, neg_b, out);
+    bigint_free(neg_b);
+    return err;
+}
+
+int bigint_mul(const BigInt *a, const BigInt *b, BigInt **out) {
+    if (!a || !b || !out) return BIGINT_ERR_NULL;
+    BigInt *result = bigint_alloc(a->length + b->length);
+    for (int i = 0; i < a->length; i++) {
         int carry = 0;
-        for (int j = 0; j < lenB; j++) {
-            int t = temp[i + j] + da[i] * db[j] + carry;
-            temp[i + j] = t % 10;
-            carry = t / 10;
+        for (int j = 0; j < b->length; j++) {
+            int prod = a->digits[i] * b->digits[j]
+                     + result->digits[i + j] + carry;
+            result->digits[i + j] = prod % RADIX;
+            carry = prod / RADIX;
         }
-        temp[i + lenB] += carry;
+        result->digits[i + b->length] += carry;
     }
-
-    free(da);
-    free(db);
-
-    /* Build result from temp array */
-    BigInt result;
-    result.head = NULL;
-    result.length = 0;
-
-    for (int i = 0; i < lenR; i++)
-        appendDigit(&result, temp[i]);
-
-    free(temp);
-
-    /* Trim leading zeros */
-    while (result.length > 1) {
-        Node *cur = result.head;
-        while (cur->next && cur->next->next) cur = cur->next;
-        if (cur->next && cur->next->digit == 0) {
-            free(cur->next);
-            cur->next = NULL;
-            result.length--;
-        } else break;
-    }
-
-    return result;
+    result->sign = (a->sign == b->sign) ? 1 : -1;
+    bigint_trim(result);
+    *out = result;
+    return BIGINT_OK;
 }
 
-/* ===================== DALYBA ===================== */
+int bigint_div(const BigInt *a, const BigInt *b, BigInt **out, BigInt **remainder) {
+    if (!a || !b || !out) return BIGINT_ERR_NULL;
+    if (b->length == 1 && b->digits[0] == 0) return BIGINT_ERR_DIV0;
 
-BigInt divideBigInt(const BigInt *a, const BigInt *b) {
-    BigInt zero;
-    initBigInt(&zero);
-
-    if (compareBigInt(b, &zero) == 0) {
-        printf("Klaida: dalyba is nulio!\n");
-        freeBigInt(&zero);
-        return zero;
+    if (cmp_abs(a, b) < 0) {
+        if (remainder) *remainder = bigint_copy(a);
+        *out = bigint_from_int(0);
+        return BIGINT_OK;
     }
 
-    /* Flatten a into array for digit-by-digit long division */
-    int lenA = a->length;
-    int *da = (int *)malloc(lenA * sizeof(int));
-    Node *ca = a->head;
-    for (int i = 0; i < lenA; i++) { da[i] = ca->digit; ca = ca->next; }
+    BigInt *quot = bigint_alloc(a->length);
+    BigInt *rem  = bigint_from_int(0);
 
-    int *qdigits = (int *)calloc(lenA, sizeof(int));
+    for (int i = a->length - 1; i >= 0; i--) {
+        /* rem = rem * RADIX + a->digits[i] */
+        BigInt *shifted = bigint_alloc(rem->length + 1);
+        for (int k = 0; k < rem->length; k++)
+            shifted->digits[k + 1] = rem->digits[k];
+        shifted->digits[0] = a->digits[i];
+        bigint_free(rem); bigint_trim(shifted); rem = shifted;
 
-    BigInt remainder;
-    initBigInt(&remainder);
-
-    for (int i = lenA - 1; i >= 0; i--) {
-        /* remainder = remainder * 10 + da[i] */
-        BigInt ten;
-        fromString(&ten, "10");
-        BigInt newRem = multiplyBigInt(&remainder, &ten);
-        freeBigInt(&ten);
-        freeBigInt(&remainder);
-
-        BigInt digit;
-        initBigInt(&digit);
-        digit.head->digit = da[i];
-
-        remainder = addBigInt(&newRem, &digit);
-        freeBigInt(&newRem);
-        freeBigInt(&digit);
-
-        int count = 0;
-        while (compareBigInt(&remainder, b) >= 0) {
-            BigInt newR = subtractBigInt(&remainder, b);
-            freeBigInt(&remainder);
-            remainder = newR;
-            count++;
+        /* Binarinė paieška: kiek kartų b telpa į rem */
+        int lo = 0, hi = RADIX - 1, qd = 0;
+        while (lo <= hi) {
+            int mid = (lo + hi) / 2;
+            BigInt *m = bigint_from_int(mid);
+            BigInt *p; bigint_mul(b, m, &p); p->sign = 1; bigint_free(m);
+            if (cmp_abs(p, rem) <= 0) { qd = mid; lo = mid + 1; }
+            else hi = mid - 1;
+            bigint_free(p);
         }
+        quot->digits[i] = qd;
 
-        qdigits[i] = count;
+        /* rem = rem - qd * b */
+        BigInt *qb = bigint_from_int(qd);
+        BigInt *sub; bigint_mul(b, qb, &sub); sub->sign = 1; bigint_free(qb);
+        BigInt *new_rem = sub_abs(rem, sub);
+        bigint_free(sub); bigint_free(rem); rem = new_rem;
     }
 
-    freeBigInt(&remainder);
-    free(da);
+    bigint_trim(quot);
+    quot->sign = (a->sign == b->sign) ? 1 : -1;
+    rem->sign  = a->sign;
+    if (quot->length == 1 && quot->digits[0] == 0) quot->sign = 1;
+    if (rem->length  == 1 && rem->digits[0]  == 0) rem->sign  = 1;
 
-    /* Build quotient BigInt from qdigits (stored least significant first) */
-    BigInt quotient;
-    quotient.head = NULL;
-    quotient.length = 0;
-    for (int i = 0; i < lenA; i++)
-        appendDigit(&quotient, qdigits[i]);
-
-    free(qdigits);
-
-    /* Trim leading zeros */
-    while (quotient.length > 1) {
-        Node *cur = quotient.head;
-        while (cur->next && cur->next->next) cur = cur->next;
-        if (cur->next && cur->next->digit == 0) {
-            free(cur->next);
-            cur->next = NULL;
-            quotient.length--;
-        } else break;
-    }
-
-    freeBigInt(&zero);
-    return quotient;
+    *out = quot;
+    if (remainder) *remainder = rem; else bigint_free(rem);
+    return BIGINT_OK;
 }
