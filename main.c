@@ -3,17 +3,16 @@
 #include "bigint.h"
 
 int main(void) {
-    BigInt *a = bigint_from_str("-100000000000000000");
-    BigInt *b = bigint_from_str("987654321");
-    BigInt *result = NULL;
+    BigInt *a = bigint_from_str("99999999999999999999");
+    BigInt *b = bigint_from_str("12345678901234567890");
 
-    bigint_mul(a, b, &result);
+    BigInt *sum = bigint_add(a, b);
+    printf("a + b = "); bigint_print(sum); printf("\n");
 
-    printf("print:  "); bigint_print(result); printf("\n");
-    char *s = bigint_to_str(result);
-    printf("string: %s\n", s);
-    free(s); 
+    BigInt *prod = bigint_mul(a, b);
+    printf("a * b = "); bigint_print(prod); printf("\n");
 
-    bigint_free(a); bigint_free(b); bigint_free(result);
+    bigint_free(a); bigint_free(b);
+    bigint_free(sum); bigint_free(prod);
     return 0;
 }

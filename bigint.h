@@ -1,37 +1,33 @@
 #ifndef BIGINT_H
 #define BIGINT_H
 
+/* Didelių skaičių ADT. Saugoma radix=256 pagrindo skaitmenų dinaminiame masyve. */
 
 #define RADIX 256
 
-#define BIGINT_OK       0  /* success                    */
-#define BIGINT_ERR_NULL 1  /* NULL pointer passed in     */
-#define BIGINT_ERR_DIV0 2  /* division by zero           */
-#define BIGINT_ERR_MEM  3  /* memory allocation failed   */
-
 typedef struct {
-    unsigned char *digits; /* base-256 digits, least significant first */
+    unsigned char *digits; 
     int length;
-    int sign;              /* 1 = positive/zero, -1 = negative */
+    int sign;            
 } BigInt;
 
-/* --- Construction / destruction --- */
-BigInt *bigint_from_int(long long value);
-BigInt *bigint_from_str(const char *str);  /* decimal string, e.g. "-12345" */
-BigInt *bigint_copy(const BigInt *a);
-void    bigint_free(BigInt *a);            /* safe to call with NULL */
+/* Kūrimas */
+BigInt *bigint_from_str(const char *str); /* iš skaiciu eilutės, pvz. "123456" */
+BigInt *bigint_clone(const BigInt *a);  
+void    bigint_free(BigInt *a);
+void    bigint_make_empty(BigInt *a);     /* išvalo*/
 
-/* --- Output --- */
-void    bigint_print(const BigInt *a);     /* prints decimal to stdout */
-char   *bigint_to_str(const BigInt *a);    /* returns decimal string; caller must free() */
+/* Užklausos */
+char *bigint_to_string(const BigInt *a);  /* Gražina kaip skaiciaus eilute tekstu*/
+void  bigint_print(const BigInt *a);      /* spausdina į ekraną skaiciu*/
+int   bigint_count(const BigInt *a);      /* skaitmenų kiekis */
+int   bigint_is_empty(const BigInt *a);   /* 1 jei tuščias */
+int   bigint_is_full(const BigInt *a);   
 
-/* --- Comparison --- returns -1, 0, or 1 --- */
-int     bigint_cmp(const BigInt *a, const BigInt *b);
-
-/* --- Arithmetic --- all write result to *out, return error code --- */
-int bigint_add(const BigInt *a, const BigInt *b, BigInt **out);
-int bigint_sub(const BigInt *a, const BigInt *b, BigInt **out);
-int bigint_mul(const BigInt *a, const BigInt *b, BigInt **out);
-int bigint_div(const BigInt *a, const BigInt *b, BigInt **out, BigInt **remainder);
+/* Aritmetika, grąžina rezultatą arba NULL jei klaida */
+BigInt *bigint_add(const BigInt *a, const BigInt *b);
+BigInt *bigint_sub(const BigInt *a, const BigInt *b);
+BigInt *bigint_mul(const BigInt *a, const BigInt *b);
+BigInt *bigint_div(const BigInt *a, const BigInt *b, BigInt **remainder);
 
 #endif
