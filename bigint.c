@@ -115,11 +115,13 @@ void bigint_free(BigInt *a) {
     free(a);
 }
 
-void bigint_print(const BigInt *a) {
+/* Grąžina naują eilutę dešimtainiu formatu - reikia free() po naudojimo */
+char *bigint_to_str(const BigInt *a) {
     BigInt *tmp  = bigint_copy(a); tmp->sign = 1;
     BigInt *ten  = bigint_from_int(10);
     BigInt *zero = bigint_from_int(0);
-    char buf[4096]; int pos = 0;
+    char *buf = malloc(a->length * 3 + 4);
+    int pos = 0;
     while (bigint_cmp(tmp, zero) != 0) {
         BigInt *rem = NULL, *q = NULL;
         bigint_div(tmp, ten, &q, &rem);
@@ -133,7 +135,13 @@ void bigint_print(const BigInt *a) {
     for (int i = 0, j = pos - 1; i < j; i++, j--) {
         char c = buf[i]; buf[i] = buf[j]; buf[j] = c;
     }
-    printf("%s", buf);
+    return buf;
+}
+
+void bigint_print(const BigInt *a) {
+    char *s = bigint_to_str(a);
+    printf("%s", s);
+    free(s);
 }
 
 int bigint_cmp(const BigInt *a, const BigInt *b) {
