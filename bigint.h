@@ -20,7 +20,7 @@ void    bigint_make_empty(BigInt *a);     /* išvalo*/
 /* Užklausos */
 char *bigint_to_string(const BigInt *a);  /* Gražina kaip skaiciaus eilute tekstu*/
 void  bigint_print(const BigInt *a);      /* spausdina į ekraną skaiciu*/
-int   bigint_count(const BigInt *a);      /* skaitmenų kiekis */
+int   bigint_count(const BigInt *a);      /* skaitmenų kiekis su 256 radix*/
 int   bigint_is_empty(const BigInt *a);   /* 1 jei tuščias */
 int   bigint_is_full(const BigInt *a);   
 

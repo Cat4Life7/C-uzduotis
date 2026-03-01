@@ -123,6 +123,14 @@ void bigint_free(BigInt *a)
     free(a);
 }
 
+int bigint_cmp(const BigInt *a, const BigInt *b)
+{
+    if (a->sign != b->sign)
+        return a->sign > b->sign ? 1 : -1;
+    int c = cmp_abs(a, b);
+    return a->sign == 1 ? c : -c;
+}
+
 char *bigint_to_str(const BigInt *a)
 {
     BigInt *tmp = bigint_copy(a);
@@ -162,14 +170,6 @@ void bigint_print(const BigInt *a)
     char *s = bigint_to_str(a);
     printf("%s", s);
     free(s);
-}
-
-int bigint_cmp(const BigInt *a, const BigInt *b)
-{
-    if (a->sign != b->sign)
-        return a->sign > b->sign ? 1 : -1;
-    int c = cmp_abs(a, b);
-    return a->sign == 1 ? c : -c;
 }
 
 BigInt *bigint_add(const BigInt *a, const BigInt *b)
@@ -245,7 +245,6 @@ BigInt *bigint_div(const BigInt *a, const BigInt *b, BigInt **remainder)
 
     for (int i = a->length - 1; i >= 0; i--)
     {
-
         BigInt *next = bigint_alloc(rem->length + 1);
         for (int k = 0; k < rem->length; k++)
             next->digits[k + 1] = rem->digits[k];
@@ -280,31 +279,15 @@ BigInt *bigint_div(const BigInt *a, const BigInt *b, BigInt **remainder)
     return quot;
 }
 
-int bigint_count(const BigInt *a)
-{
-    return a->length;
-}
-
-int bigint_is_empty(const BigInt *a)
-{
-    return a->length == 0;
-}
-
+int bigint_count(const BigInt *a) { return a->length; }
+int bigint_is_empty(const BigInt *a) { return a->length == 0; }
 int bigint_is_full(const BigInt *a)
 {
     (void)a;
     return 0;
 }
-
-char *bigint_to_string(const BigInt *a)
-{
-    return bigint_to_str(a);
-}
-
-BigInt *bigint_clone(const BigInt *a)
-{
-    return bigint_copy(a);
-}
+char *bigint_to_string(const BigInt *a) { return bigint_to_str(a); }
+BigInt *bigint_clone(const BigInt *a) { return bigint_copy(a); }
 
 void bigint_make_empty(BigInt *a)
 {
